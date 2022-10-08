@@ -110,7 +110,7 @@ void time1sec()
   else if (timer_nointernet >= 61)
     timer_nointernet++;
 
-  if (iot.getTodayTimestamp() == 72000) //28800
+  if (iot.getTodayTimestamp() == 28800) //28800
   {
     line_flag=1;
   }
