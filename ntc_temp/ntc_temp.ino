@@ -9,6 +9,7 @@
 #include <Ticker.h>
 #include <EEPROM.h>
 #include <TM1637.h>
+#include <TridentTD_LineNotify.h>
 #include <iotbundle.h>
 
 // 1 สร้าง object ชื่อ iot และกำหนดค่า(project)
@@ -43,6 +44,10 @@ char emailParamValue[STRING_LEN];
 char passParamValue[STRING_LEN];
 char serverParamValue[STRING_LEN];
 
+char tokenParamValue[STRING_LEN];
+char lowerTempParamValue[NUMBER_LEN];
+char upperTempParamValue[NUMBER_LEN];
+
 IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, VERSION); // version defind in iotbundle.h file
 // -- You can also use namespace formats e.g.: iotwebconf::TextParameter
 IotWebConfParameterGroup login = IotWebConfParameterGroup("login", "ล็อกอิน(สมัครที่เว็บก่อนนะครับ)");
@@ -50,6 +55,11 @@ IotWebConfParameterGroup login = IotWebConfParameterGroup("login", "ล็อก
 IotWebConfTextParameter emailParam = IotWebConfTextParameter("อีเมลล์", "emailParam", emailParamValue, STRING_LEN);
 IotWebConfPasswordParameter passParam = IotWebConfPasswordParameter("รหัสผ่าน", "passParam", passParamValue, STRING_LEN);
 IotWebConfTextParameter serverParam = IotWebConfTextParameter("เซิฟเวอร์", "serverParam", serverParamValue, STRING_LEN, "https://iotkiddie.com");
+
+IotWebConfParameterGroup line_notify = IotWebConfParameterGroup("Line Notify", "แจ้งเตือน");
+IotWebConfTextParameter tokenParam = IotWebConfTextParameter("Token", "tokenParam", tokenParamValue, STRING_LEN, "");
+IotWebConfTextParameter upperTempParam = IotWebConfTextParameter("แจ้งเตือนสูงกว่า", "upperTempParam", upperTempParamValue, NUMBER_LEN, "8");
+IotWebConfTextParameter lowerTempParam = IotWebConfTextParameter("แจ้งเตือนต่ำกว่า", "lowerTempParam", lowerTempParamValue, NUMBER_LEN, "4");
 
 uint8_t t_connecting;
 iotwebconf::NetworkState prev_state = iotwebconf::Boot;
@@ -60,6 +70,10 @@ uint16_t timer_nointernet;
 
 uint16_t Vt;
 uint8_t Vt_index;
+float temp;
+int8_t upperTemp = 8, lowerTemp = 4;
+uint8_t stateTemp = 1; // 0-lower  1-normal  2-high
+bool line_flag=0;
 
 // timer interrupt every 1 second
 void time1sec()
@@ -96,9 +110,14 @@ void time1sec()
   else if (timer_nointernet >= 61)
     timer_nointernet++;
 
+  if (iot.getTodayTimestamp() == 72000) //28800
+  {
+    line_flag=1;
+  }
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
 
   // for clear eeprom jump D5 to GND
@@ -129,10 +148,15 @@ void setup() {
   login.addItem(&passParam);
   login.addItem(&serverParam);
 
+  line_notify.addItem(&tokenParam);
+  line_notify.addItem(&upperTempParam);
+  line_notify.addItem(&lowerTempParam);
+
   //  iotWebConf.setStatusPin(STATUS_PIN);
   // iotWebConf.setConfigPin(CONFIG_PIN);
   //  iotWebConf.addSystemParameter(&stringParam);
   iotWebConf.addParameterGroup(&login);
+  iotWebConf.addParameterGroup(&line_notify);
   iotWebConf.setConfigSavedCallback(&configSaved);
   iotWebConf.setFormValidator(&formValidator);
   iotWebConf.getApTimeoutParameter()->visible = false;
@@ -165,7 +189,8 @@ void setup() {
   Serial.println("Ready.");
 }
 
-void loop() {
+void loop()
+{
   // 3 คอยจัดการ และส่งค่าให้เอง
   iot.handle();
 
@@ -181,19 +206,70 @@ void loop() {
     Vt_index++;
   }
 
-  if (Vt_index >= 10) {
+  if (Vt_index >= 20)
+  {
     float Vtf = (float)Vt / Vt_index;
     Vt = 0;
     Vt_index = 0;
 
     float Rt = (float)(1023 * 9900) / Vtf - 9900;
     float ln = log(Rt / 10000);
-    float  temp = (1 / ((ln / 3950) + (1 / (25 + 273.15))));
+    temp = (1 / ((ln / 3950) + (1 / (25 + 273.15))));
     temp -= 273.15;
     Serial.println(temp);
     tm.display(String(temp, 0) + " C");
 
     iot.update(NAN, temp);
+
+    // check need ota update flag from server
+    if (iot.need_ota)
+      iot.otaUpdate("NCT-14298243");
+
+    // แจ้งเตือนไลน์
+    if (stateTemp == 0)
+    {
+      if (temp > lowerTemp + 0.5)
+      {
+        LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
+        stateTemp = 1;
+      }
+      else if (temp > upperTemp)
+      {
+        LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
+        stateTemp = 2;
+      }
+    }
+    else if (stateTemp == 1)
+    {
+      if (temp < lowerTemp)
+      {
+        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
+        stateTemp = 0;
+      }
+      else if (temp > upperTemp)
+      {
+        LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
+        stateTemp = 2;
+      }
+    }
+    else if (stateTemp == 2)
+    {
+      if (temp < upperTemp - 0.5)
+      {
+        LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
+        stateTemp = 1;
+      }
+      else if (temp < lowerTemp)
+      {
+        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
+        stateTemp = 0;
+      }
+    }
+  }
+
+  if(line_flag){
+    LINE.notify("อุณหภูมิตอนนี้ " + String(temp) + " C");
+    line_flag = 0;
   }
 }
 
@@ -251,6 +327,11 @@ void wifiConnected()
     else // ถ้าไม่ได้ตั้งค่า server ให้ใช้ค่า default
       iot.begin((String)emailParamValue, (String)passParamValue);
   }
+
+  upperTemp = atoi(upperTempParamValue);
+  lowerTemp = atoi(lowerTempParamValue);
+  LINE.setToken(tokenParamValue);
+  Serial.println("token " + String(tokenParamValue) + "\tat " + String(lowerTemp) + " to " + String(upperTemp));
 }
 
 bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper)
