@@ -72,7 +72,7 @@ uint16_t Vt;
 uint8_t Vt_index;
 float temp;
 int8_t upperTemp = 8, lowerTemp = 4;
-uint8_t stateTemp = 1; // 0-lower  1-normal  2-high
+uint8_t stateTemp = 3; // 0-lower  1-normal  2-high  3-line not config
 bool line_flag=0;
 
 // timer interrupt every 1 second
@@ -331,6 +331,7 @@ void wifiConnected()
   upperTemp = atoi(upperTempParamValue);
   lowerTemp = atoi(lowerTempParamValue);
   LINE.setToken(tokenParamValue);
+  stateTemp = 1;
   Serial.println("token " + String(tokenParamValue) + "\tat " + String(lowerTemp) + " to " + String(upperTemp));
 }
 
