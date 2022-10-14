@@ -73,7 +73,7 @@ uint8_t Vt_index;
 float temp;
 int8_t upperTemp = 8, lowerTemp = 4;
 uint8_t stateTemp = 3; // 0-lower  1-normal  2-high  3-line not config
-bool line_flag=0;
+bool line_flag = 0;
 
 // timer interrupt every 1 second
 void time1sec()
@@ -112,7 +112,7 @@ void time1sec()
 
   if (iot.getTodayTimestamp() == 28800) //28800
   {
-    line_flag=1;
+    line_flag = 1;
   }
 }
 
@@ -164,14 +164,14 @@ void setup()
 
   // -- Define how to handle updateServer calls.
   iotWebConf.setupUpdateServer(
-      [](const char *updatePath)
-      {
-        httpUpdater.setup(&server, updatePath);
-      },
-      [](const char *userName, char *password)
-      {
-        httpUpdater.updateCredentials(userName, password);
-      });
+    [](const char *updatePath)
+  {
+    httpUpdater.setup(&server, updatePath);
+  },
+  [](const char *userName, char *password)
+  {
+    httpUpdater.updateCredentials(userName, password);
+  });
 
   // -- Initializing the configuration.
   iotWebConf.init();
@@ -179,11 +179,13 @@ void setup()
   // -- Set up required URL handlers on the web server.
   server.on("/", handleRoot);
   server.on("/config", []
-            { iotWebConf.handleConfig(); });
+  { iotWebConf.handleConfig(); });
   server.on("/cleareeprom", clearEEPROM);
   server.on("/reboot", reboot);
   server.onNotFound([]()
-                    { iotWebConf.handleNotFound(); });
+  {
+    iotWebConf.handleNotFound();
+  });
 
   Serial.println("ESPID: " + String(ESP.getChipId()));
   Serial.println("Ready.");
@@ -206,7 +208,7 @@ void loop()
     Vt_index++;
   }
 
-  if (Vt_index >= 20)
+  if (Vt_index >= 50)
   {
     float Vtf = (float)Vt / Vt_index;
     Vt = 0;
@@ -228,12 +230,12 @@ void loop()
     // แจ้งเตือนไลน์
     if (stateTemp == 0)
     {
-      if (temp > lowerTemp + 0.5)
+      if (temp > lowerTemp + 1)
       {
         LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
         stateTemp = 1;
       }
-      else if (temp > upperTemp)
+      else if (temp > upperTemp + 0.5)
       {
         LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
         stateTemp = 2;
@@ -241,12 +243,12 @@ void loop()
     }
     else if (stateTemp == 1)
     {
-      if (temp < lowerTemp)
+      if (temp < lowerTemp - 0.5)
       {
         LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
         stateTemp = 0;
       }
-      else if (temp > upperTemp)
+      else if (temp > upperTemp + 0.5)
       {
         LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
         stateTemp = 2;
@@ -254,12 +256,12 @@ void loop()
     }
     else if (stateTemp == 2)
     {
-      if (temp < upperTemp - 0.5)
+      if (temp < upperTemp - 1)
       {
         LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
         stateTemp = 1;
       }
-      else if (temp < lowerTemp)
+      else if (temp < lowerTemp - 0.5)
       {
         LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
         stateTemp = 0;
@@ -267,7 +269,7 @@ void loop()
     }
   }
 
-  if(line_flag){
+  if (line_flag) {
     LINE.notify("อุณหภูมิตอนนี้ " + String(temp) + " C");
     line_flag = 0;
   }
