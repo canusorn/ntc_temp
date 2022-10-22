@@ -25,7 +25,7 @@ const char wifiInitialApPassword[] = "iotbundle";
 // timer interrupt
 Ticker timestamp;
 
-TM1637 tm(D0, D5);
+TM1637 tm(D0, D5);  // CLK, DIO
 
 unsigned long previousMillis = 0;
 
@@ -143,7 +143,8 @@ void setup()
 
   tm.begin();
   tm.setBrightness(4);
-
+  tm.display("nct");
+  
   login.addItem(&emailParam);
   login.addItem(&passParam);
   login.addItem(&serverParam);
@@ -214,7 +215,7 @@ void loop()
     Vt = 0;
     Vt_index = 0;
 
-    float Rt = (float)(1023 * 9900) / Vtf - 9900;
+    float Rt = (float)(1023 * 9940) / Vtf - 9940;
     float ln = log(Rt / 10000);
     temp = (1 / ((ln / 3950) + (1 / (25 + 273.15))));
     temp -= 273.15;
