@@ -48,7 +48,7 @@ char tokenParamValue[STRING_LEN];
 char lowerTempParamValue[NUMBER_LEN];
 char upperTempParamValue[NUMBER_LEN];
 
-IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, VERSION); // version defind in iotbundle.h file
+IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, VERSION);  // version defind in iotbundle.h file
 // -- You can also use namespace formats e.g.: iotwebconf::TextParameter
 IotWebConfParameterGroup login = IotWebConfParameterGroup("login", "ล็อกอิน(สมัครที่เว็บก่อนนะครับ)");
 
@@ -72,23 +72,19 @@ uint16_t Vt;
 uint8_t Vt_index;
 float temp;
 int8_t upperTemp = 8, lowerTemp = 4;
-uint8_t stateTemp = 3; // 0-lower  1-normal  2-high  3-line not config
+uint8_t stateTemp = 3;  // 0-lower  1-normal  2-high  3-line not config
 bool line_flag = 0;
+uint16_t lowTempTime, highTempTime;
 
 // timer interrupt every 1 second
-void time1sec()
-{
+void time1sec() {
   iot.interrupt1sec();
 
   // if can't connect to network
-  if (iotWebConf.getState() == iotwebconf::OnLine)
-  {
-    if (iot.serverConnected)
-    {
+  if (iotWebConf.getState() == iotwebconf::OnLine) {
+    if (iot.serverConnected) {
       timer_nointernet = 0;
-    }
-    else
-    {
+    } else {
       timer_nointernet++;
       if (timer_nointernet > 30)
         Serial.println("No connection time : " + String(timer_nointernet));
@@ -96,37 +92,39 @@ void time1sec()
   }
 
   // reconnect wifi if can't connect server
-  if (timer_nointernet == 60)
-  {
+  if (timer_nointernet == 90) {
     Serial.println("Can't connect to server -> Restart wifi");
     iotWebConf.goOffLine();
     timer_nointernet++;
-  }
-  else if (timer_nointernet >= 65)
-  {
+  } else if (timer_nointernet >= 95) {
     timer_nointernet = 0;
     iotWebConf.goOnLine(false);
-  }
-  else if (timer_nointernet >= 61)
+  } else if (timer_nointernet >= 91)
     timer_nointernet++;
 
-  if (iot.getTodayTimestamp() == 28800) //28800
+  if (iot.getTodayTimestamp() == 28800)  //28800
   {
     line_flag = 1;
   }
+
+  if (stateTemp == 0) {
+    lowTempTime++;
+  } else if (stateTemp == 2) {
+    highTempTime++;
+  } else {
+    lowTempTime = 0;
+    highTempTime = 0;
+  }
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
 
   // for clear eeprom jump D5 to GND
   pinMode(D5, INPUT_PULLUP);
-  if (digitalRead(D5) == false)
-  {
+  if (digitalRead(D5) == false) {
     delay(1000);
-    if (digitalRead(D5) == false)
-    {
+    if (digitalRead(D5) == false) {
       Serial.println("Reset all data");
       delay(1000);
       clearEEPROM();
@@ -144,7 +142,7 @@ void setup()
   tm.begin();
   tm.setBrightness(4);
   tm.display("nct");
-  
+
   login.addItem(&emailParam);
   login.addItem(&passParam);
   login.addItem(&serverParam);
@@ -165,12 +163,10 @@ void setup()
 
   // -- Define how to handle updateServer calls.
   iotWebConf.setupUpdateServer(
-    [](const char *updatePath)
-  {
+  [](const char *updatePath) {
     httpUpdater.setup(&server, updatePath);
   },
-  [](const char *userName, char *password)
-  {
+  [](const char *userName, char *password) {
     httpUpdater.updateCredentials(userName, password);
   });
 
@@ -179,12 +175,12 @@ void setup()
 
   // -- Set up required URL handlers on the web server.
   server.on("/", handleRoot);
-  server.on("/config", []
-  { iotWebConf.handleConfig(); });
+  server.on("/config", [] {
+    iotWebConf.handleConfig();
+  });
   server.on("/cleareeprom", clearEEPROM);
   server.on("/reboot", reboot);
-  server.onNotFound([]()
-  {
+  server.onNotFound([]() {
     iotWebConf.handleNotFound();
   });
 
@@ -192,8 +188,7 @@ void setup()
   Serial.println("Ready.");
 }
 
-void loop()
-{
+void loop() {
   // 3 คอยจัดการ และส่งค่าให้เอง
   iot.handle();
 
@@ -202,15 +197,13 @@ void loop()
   MDNS.update();
 
   unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= 100)
-  { // run every 0.1 second
+  if (currentMillis - previousMillis >= 100) {  // run every 0.1 second
     previousMillis = currentMillis;
     Vt += analogRead(A0);
     Vt_index++;
   }
 
-  if (Vt_index >= 50)
-  {
+  if (Vt_index >= 50) {
     float Vtf = (float)Vt / Vt_index;
     Vt = 0;
     Vt_index = 0;
@@ -229,44 +222,40 @@ void loop()
       iot.otaUpdate("NCT-14298243");
 
     // แจ้งเตือนไลน์
-    if (stateTemp == 0)
-    {
-      if (temp > lowerTemp + 1)
-      {
+    if (stateTemp == 0) {
+      if (temp > lowerTemp + 1) {
         LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
         stateTemp = 1;
+      } else if (temp > upperTemp + 0.5) {
+        stateTemp = 2;
       }
-      else if (temp > upperTemp + 0.5)
-      {
+
+      if (lowTempTime >= 600) {
+        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
+        lowTempTime = 0;
+      }
+
+    } else if (stateTemp == 1) {
+      if (temp < lowerTemp - 0.5) {
+        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
+        stateTemp = 0;
+      } else if (temp > upperTemp + 0.5) {
         LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
         stateTemp = 2;
       }
-    }
-    else if (stateTemp == 1)
-    {
-      if (temp < lowerTemp - 0.5)
-      {
-        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
-        stateTemp = 0;
-      }
-      else if (temp > upperTemp + 0.5)
-      {
-        LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
-        stateTemp = 2;
-      }
-    }
-    else if (stateTemp == 2)
-    {
-      if (temp < upperTemp - 1)
-      {
+    } else if (stateTemp == 2) {
+      if (temp < upperTemp - 1) {
         LINE.notify("อุณหภูมิปกติ " + String(temp) + " C");
         stateTemp = 1;
-      }
-      else if (temp < lowerTemp - 0.5)
-      {
-        LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
+      } else if (temp < lowerTemp - 0.5) {
         stateTemp = 0;
       }
+
+      if (highTempTime >= 600) {
+        LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
+        highTempTime = 0;
+      }
+
     }
   }
 
@@ -276,11 +265,9 @@ void loop()
   }
 }
 
-void handleRoot()
-{
+void handleRoot() {
   // -- Let IotWebConf test and handle captive portal requests.
-  if (iotWebConf.handleCaptivePortal())
-  {
+  if (iotWebConf.handleCaptivePortal()) {
     // -- Captive portal request were already served.
     return;
   }
@@ -307,27 +294,24 @@ void handleRoot()
   server.send(200, "text/html", s);
 }
 
-void configSaved()
-{
+void configSaved() {
   Serial.println("Configuration was updated.");
 }
 
-void wifiConnected()
-{
+void wifiConnected() {
 
   Serial.println("WiFi was connected.");
   MDNS.begin(iotWebConf.getThingName());
   MDNS.addService("http", "tcp", 80);
 
   Serial.printf("Ready! Open http://%s.local in your browser\n", String(iotWebConf.getThingName()));
-  if ((String)emailParamValue != "" && (String)passParamValue != "")
-  {
+  if ((String)emailParamValue != "" && (String)passParamValue != "") {
     Serial.println("login");
 
     // 2 เริ่มเชื่อมต่อ หลังจากต่อไวไฟได้
     if ((String)passParamValue != "")
       iot.begin((String)emailParamValue, (String)passParamValue, (String)serverParamValue);
-    else // ถ้าไม่ได้ตั้งค่า server ให้ใช้ค่า default
+    else  // ถ้าไม่ได้ตั้งค่า server ให้ใช้ค่า default
       iot.begin((String)emailParamValue, (String)passParamValue);
   }
 
@@ -338,8 +322,7 @@ void wifiConnected()
   Serial.println("token " + String(tokenParamValue) + "\tat " + String(lowerTemp) + " to " + String(upperTemp));
 }
 
-bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper)
-{
+bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper) {
   Serial.println("Validating form.");
   bool valid = true;
 
@@ -354,12 +337,10 @@ bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper)
   return valid;
 }
 
-void clearEEPROM()
-{
+void clearEEPROM() {
   EEPROM.begin(512);
   // write a 0 to all 512 bytes of the EEPROM
-  for (int i = 0; i < 512; i++)
-  {
+  for (int i = 0; i < 512; i++) {
     EEPROM.write(i, 0);
   }
 
@@ -369,8 +350,7 @@ void clearEEPROM()
   ESP.restart();
 }
 
-void reboot()
-{
+void reboot() {
   server.send(200, "text/plain", "rebooting");
   delay(1000);
   ESP.restart();
