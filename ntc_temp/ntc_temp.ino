@@ -1,3 +1,9 @@
+/*
+config sampletime to 108000
+and send time to uint32_t
+*/
+
+
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
@@ -8,7 +14,7 @@
 #include <ESP8266mDNS.h>
 #include <Ticker.h>
 #include <EEPROM.h>
-#include <TM1637.h>
+#include <TM1637.h>  // TM1637 Driver by AKJ
 #include <TridentTD_LineNotify.h>
 #include <iotbundle.h>
 
@@ -74,33 +80,34 @@ float temp;
 int8_t upperTemp = 8, lowerTemp = 4;
 uint8_t stateTemp = 3;  // 0-lower  1-normal  2-high  3-line not config
 bool line_flag = 0;
-uint16_t lowTempTime, highTempTime;
+uint16_t lowTempTime, highTempTime, updateTime = 1800;
+
 
 // timer interrupt every 1 second
 void time1sec() {
   iot.interrupt1sec();
 
-  // if can't connect to network
-  if (iotWebConf.getState() == iotwebconf::OnLine) {
-    if (iot.serverConnected) {
-      timer_nointernet = 0;
-    } else {
-      timer_nointernet++;
-      if (timer_nointernet > 30)
-        Serial.println("No connection time : " + String(timer_nointernet));
-    }
-  }
+  // // if can't connect to network
+  // if (iotWebConf.getState() == iotwebconf::OnLine) {
+  //   if (iot.serverConnected) {
+  //     timer_nointernet = 0;
+  //   } else {
+  //     timer_nointernet++;
+  //     if (timer_nointernet > 30)
+  //       Serial.println("No connection time : " + String(timer_nointernet));
+  //   }
+  // }
 
-  // reconnect wifi if can't connect server
-  if (timer_nointernet == 90) {
-    Serial.println("Can't connect to server -> Restart wifi");
-    iotWebConf.goOffLine();
-    timer_nointernet++;
-  } else if (timer_nointernet >= 95) {
-    timer_nointernet = 0;
-    iotWebConf.goOnLine(false);
-  } else if (timer_nointernet >= 91)
-    timer_nointernet++;
+  // // reconnect wifi if can't connect server
+  // if (timer_nointernet == 90) {
+  //   Serial.println("Can't connect to server -> Restart wifi");
+  //   iotWebConf.goOffLine();
+  //   timer_nointernet++;
+  // } else if (timer_nointernet >= 95) {
+  //   timer_nointernet = 0;
+  //   iotWebConf.goOnLine(false);
+  // } else if (timer_nointernet >= 91)
+  //   timer_nointernet++;
 
   if (iot.getTodayTimestamp() == 28800)  //28800
   {
@@ -115,6 +122,8 @@ void time1sec() {
     lowTempTime = 0;
     highTempTime = 0;
   }
+
+  if (updateTime <= 1800) updateTime++;
 }
 
 void setup() {
@@ -163,12 +172,12 @@ void setup() {
 
   // -- Define how to handle updateServer calls.
   iotWebConf.setupUpdateServer(
-  [](const char *updatePath) {
-    httpUpdater.setup(&server, updatePath);
-  },
-  [](const char *userName, char *password) {
-    httpUpdater.updateCredentials(userName, password);
-  });
+    [](const char *updatePath) {
+      httpUpdater.setup(&server, updatePath);
+    },
+    [](const char *userName, char *password) {
+      httpUpdater.updateCredentials(userName, password);
+    });
 
   // -- Initializing the configuration.
   iotWebConf.init();
@@ -213,13 +222,28 @@ void loop() {
     temp = (1 / ((ln / 3950) + (1 / (25 + 273.15))));
     temp -= 273.15;
     Serial.println(temp);
-    tm.display(String(temp, 0) + " C");
 
-    iot.update(NAN, temp);
+    if (temp < -10) {
+      tm.display(String(temp, 1) + "-");
+    } else if (temp < 0) {
+      tm.display(" " + String(temp, 1) + "-");
+    } else if (temp < 10) {
+      tm.display(" " + String(temp, 1) + " ");
+    } else {
+      tm.display(String(temp, 1) + " ");
+    }
+
+    if (updateTime > 1800) {
+      iot.update(NAN, temp);
+      if (iot.serverConnected) {
+        updateTime = 0;
+      }
+    }
+
 
     // check need ota update flag from server
     if (iot.need_ota)
-      iot.otaUpdate("NCT-14298243");
+      iot.otaUpdate("NCT");
 
     // แจ้งเตือนไลน์
     if (stateTemp == 0) {
@@ -230,7 +254,7 @@ void loop() {
         stateTemp = 2;
       }
 
-      if (lowTempTime >= 600) {
+      if (lowTempTime >= 900) {
         LINE.notify("อุณหภูมิต่ำกว่ากำหนด " + String(temp) + " C");
         lowTempTime = 0;
       }
@@ -251,11 +275,10 @@ void loop() {
         stateTemp = 0;
       }
 
-      if (highTempTime >= 600) {
+      if (highTempTime >= 900) {
         LINE.notify("อุณหภูมิมากกว่ากำหนด " + String(temp) + " C");
         highTempTime = 0;
       }
-
     }
   }
 
